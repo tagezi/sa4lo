@@ -6,93 +6,104 @@ Private aConfNameParam(1 to 7) As String
 Private aConfAddrParam(1 to 7) As String
 Private aConfTitleParam(1 to 7) As String
 Private nCount As Integer
-Private sSheet , sStartCell, sFieldName, sConfFileName As String
-Private bMustBeClose, bStartAnalysis, bStartFloodField As Boolean
+Private sSheet , sStartCell, sFieldName, sFileName As String
+Private bCloseFloodField, bStartAnalysis, bStartFloodField As Boolean
 
 'Начальный блок запускающий компоненты для решения комплекса задач
 Sub Main
-	Dim oLib, Controls() As Object
 	Dim sUrl, sLine As String
-	Dim iNumField, iNumber As Integer
-	Dim aTempConfParam(1 to 3) As String
-	'читаем библиотеки, диалог, названия листов
+	'грузим библиотеки и общую информацию 
+	If not isLibraryLoaded() Then Exit Sub
 	oLib = DialogLibraries.GetByName("SensitivityAnalysis")
+	oDlg = CreateUnoDialog(oLib.GetByName("DialogSA"))
 	oDoc = ThisComponent.Sheets
-	oDlg = CreateUnoDialog(oLib.GetByName("SensitivityAnalysis"))
 	'получаем адрес файла
 	sUrl = ThisComponent.getURL()
-	sConfFileName = Left(sUrl, Len(sUrl) - 4) & ".conf"
-	iNumField = 1
-	'смотрим есть ли файл и если нет создаём его
-	If (Not FileExists(sConfFileName)) Then 
-  		iNumber = Freefile
-    	Open sConfFileName For Output As #iNumber
-		Print #iNumber, sConfFileName
-    	Close #iNumber
-    else
-    ' если есть заполняем диалог
-    	iNumber = Freefile
-    	Open sConfFileName For Input As iNumber
-    	While Not eof(iNumber)
-        	Line Input #iNumber, sLine
-        	If sLine <> sConfFileName and sLine <> "" Then
-            	aTempConfParam = split(sLine, ";")
-            	aConfAddrParam(7) = 1
-	            If (aTempConfParam(1) <> "1" and aTempConfParam(0) = "CheckBox1") Then
-	            	oDlg.getControl("CheckBox1").State = False
-	            	aConfNameParam(7) = "CheckBox1"
-		           	aConfAddrParam(7) = 0
-	            elseIf (aTempConfParam(0) <> "CheckBox1" and aTempConfParam(0) <> "Fac") Then
-	           		oDlg.getControl("ComboBox" & iNumField).setText(aTempConfParam(0))
-		           	aConfNameParam(iNumField) = aTempConfParam(0)
-		           	EnableUpAvto("ComboBox" & iNumField)
-		           	oDlg.getControl("TextField" & iNumField).setText(aTempConfParam(1))
-		           	aConfAddrParam(iNumField) = aTempConfParam(1)
-		           	If (aTempConfParam(1) = "Собственный") Then
-		           		oDlg.getControl("TextField" & (iNumField + 5 )).setText(aTempConfParam(2))
-		           		aConfTitleParam(iNumField) = aTempConfParam(2)
-		           	end If
-		           	iNumField = iNumField + 1
-		        else
-		        	oDlg.getControl("TextField11").setText(aTempConfParam(1))
-		           	aConfAddrParam(iNumField) = aTempConfParam(1)
-            	end if
-        	End If
-    	Wend
-    	Close #iNumber
+	sFileName = Left(sUrl, Len(sUrl) - 4) & ".conf"
+	'читаем файл настроек если есть
+	If (FileExists(sFileName)) Then 
+		fRead(sFileName)
 	End If
-	StartDialogAnalysis("") 'запускаем основной диалог
+	StartAnalysisDialog("") 'запускаем основной диалог
 End Sub
 
+'читаем настройки из файла
+Function fRead(Optional sFileName As String)
+	Dim aTempConfParam(1 to 3) As String
+	iNumField = 1
+	iNumber = Freefile
+	Open sFileName For Input As iNumber
+	While Not eof(iNumber)
+		Line Input #iNumber, sLine
+		If sLine <> sFileName and sLine <> "" Then
+			aTempConfParam = split(sLine, ";")
+			aConfAddrParam(7) = 1
+			If (aTempConfParam(1) <> "1" and aTempConfParam(0) = "CheckBox1") Then
+				oDlg.getControl("CheckBox1").State = False
+				aConfNameParam(7) = "CheckBox1"
+				aConfAddrParam(7) = 0
+			elseIf (aTempConfParam(0) <> "CheckBox1" and aTempConfParam(0) <> "Fac") Then
+				oDlg.getControl("ComboBox" & iNumField).setText(aTempConfParam(0))
+				aConfNameParam(iNumField) = aTempConfParam(0)
+				EnableUpAvto("ComboBox" & iNumField)
+				oDlg.getControl("TextField" & iNumField).setText(aTempConfParam(1))
+				aConfAddrParam(iNumField) = aTempConfParam(1)
+				If (aTempConfParam(1) = "Собственный") Then
+					oDlg.getControl("TextField" & (iNumField + 5 )).setText(aTempConfParam(2))
+					aConfTitleParam(iNumField) = aTempConfParam(2)
+				end If
+				iNumField = iNumField + 1
+			else
+				oDlg.getControl("TextField11").setText(aTempConfParam(1))
+				aConfAddrParam(iNumField) = aTempConfParam(1)
+            end if
+        End If
+   	Wend
+    Close #iNumber
+End Function
+
+Function fSave(sAddress As String)
+	iNumber = Freefile
+	Open sFileName For Output As #iNumber
+		iNumField = 1
+		Print #iNumber, sFileName
+		Print #iNumber, "CheckBox1" & ";" & oDlg.GetControl("CheckBox1").getState()
+			While aComBox(iNumField) <> ""
+				Print #iNumber, aComBox(iNumField) & ";" & Right(aAddress(iNumField), (Len(aAddress(iNumField)) - 1)) & ";"
+				iNumField = iNumField + 1
+			Wend
+		Print #iNumber, "Fac" & ";" & Right(sAddress, (Len(sAddress) - 1))
+		Close #iNumber
+End Function
+
 'Облегчает управление основным диалоговым окном
-Sub StartDialogAnalysis(sAddress As String)
-	Dim Controls(), oDlgModel As Object
+Sub StartAnalysisDialog(sAddress As String)
+	Dim oDlgModel As Object
 	oDlg.setVisible(True)
-	If (Not IsEmpty(sFieldName)) Then
-		oDlg.getControl(sFieldName).setText(sAddress)
-	End If
+	If (Not IsEmpty(sFieldName)) Then oDlg.getControl(sFieldName).setText(sAddress)
 	bStartFloodField = False
 	bStartAnalysis = False
 	'ждём нажатия кнопки
-		Do
-		If (bStartAnalysis) Then
+	Do
+		If bStartAnalysis Then
 		'начинаем расчеты
 			oDlg.setVisible(False)
-			SensitivityAnalysis.Module1.StartAnalysis()
+			StartAnalysis()
 			exit Do
 		elseif bStartFloodField Then
 		'открывает вспомогательное окно для адреса
 			oDlg.setVisible(False)
-			SensitivityAnalysis.Module1.ShowAddressDialog()
+			StartAddressDialog()
 			bStartFloodField = False
 			exit Do
 		End If
 		wait (100)
 	Loop
+	Stop
 End Sub
 
 'облегчает управление диалоговым окнов для ввода адреса
-Sub ShowAddressDialog
+Sub StartAddressDialog
 	Dim Controls(), oDlgSADModel, Doc, TextFieldModel As Object
 	oDlg.setVisible(False)
 	oLib = DialogLibraries.GetByName("SensitivityAnalysis")
@@ -100,16 +111,16 @@ Sub ShowAddressDialog
 	oDlgSADModel = oDlgSAD.Model
 	Doc = ThisComponent
 	oDlgSAD.setVisible(True)
-	bMustBeClose = false
+	bCloseFloodField = false
 	'ждём нажатия кнопки
 	Do
 		Controls() = oDlgSADModel.getControlModels
 		TextFieldModel = Controls(0)
 		TextFieldModel.Text = Doc.CurrentSelection.AbsoluteName
-		if bMustBeClose then
+		If bCloseFloodField then
 		'пересылаем данные в основное окно
 			oDlgSAD.setVisible(False)
-			StartDialogAnalysis(TextFieldModel.Text)
+			StartAnalysisDialog(TextFieldModel.Text)
 			exit Do
 		End If
 		wait (100)
@@ -167,23 +178,12 @@ Sub StartAnalysis
 		End If
 		'проверяем бфли ли изменены данные в диалоге
 		If (ChangesCheck()) Then
-		'если да, записываем новые данные в файл
-			iNumber = Freefile
-	    	Open sConfFileName For Output As #iNumber
-	    	iNumField = 1
-	    	Print #iNumber, sConfFileName
-	    	Print #iNumber, "CheckBox1" & ";" & oDlg.GetControl("CheckBox1").getState()
-	    	While aComBox(iNumField) <> ""
-				Print #iNumber, aComBox(iNumField) & ";" & Right(aAddress(iNumField), (Len(aAddress(iNumField)) - 1)) & ";"
-				iNumField = iNumField + 1
-			Wend
-			Print #iNumber, "Fac" & ";" & Right(sAddress, (Len(sAddress) - 1))
-			Close #iNumber
+			'если да, записываем новые данные в файл
+			fSave(sAddress)
 			iNumField = 1
 			'удаляем лишние листы
-			sNameSheet = "Interim calculation"
-			If (oDoc.hasByName(sNameSheet)) Then
-				oDoc.removeByName(sNameSheet)
+			If (oDoc.hasByName("Interim calculation")) Then
+				oDoc.removeByName("Interim calculation")
 			End If
 			sNameSheet = aComBox(iNumField)				
 			While iNumField <> 5
@@ -486,7 +486,7 @@ End Sub
 
 'событие "нажата кнопка Ok" вспомогательного диалога
 Sub onBtnOKPressed(oEvent)
-	bMustBeClose = True
+	bCloseFloodField = True
 End Sub
 
 'событие "нажата кнопка выбора адреса" лоя вызова вспомогательного окна
@@ -508,7 +508,6 @@ End Function
 
 'Закрытие без сохранения
 Sub CloseDialog
- '   oDlg.setVisible(False)
     Stop
 End Sub
 
@@ -523,4 +522,32 @@ Function getCountNonEmpt(oRange As Variant)
         oEnum.nextElement()
     Loop
     getCountNonEmpt = iCountCells
-End Function 
+End Function
+
+REM AM:Listing 5.78: Using the ApplicationScriptLibraryContainer.
+REM Modified: JohnSUN
+REM Check whether is loaded the macro-library with the specified name
+REM (by default "Tools"). If not already loaded, it tries to load.
+Function isLibraryLoaded(Optional LibName As String) As Boolean
+Dim oLibs As Object
+	If IsMissing(LibName) Then LibName="Tools"
+	oLibs = GlobalScope.BasicLibraries
+	If oLibs.HasByName (LibName) Then
+		If (Not oLibs.isLibraryLoaded(LibName)) Then
+		oLibs.LoadLibrary(LibName)
+		End If
+		If (Not oLibs.isLibraryLoaded(LibName)) Then
+			MsgBox("The library named """ + LibName + """ is not loaded!" + Chr(13) + _
+			"Be sure to install the office properly." + Chr(13) + _
+			"Some of the macros will not be available!", 48, "Attention!")
+			isLibraryLoaded = False
+		Else
+			isLibraryLoaded = True
+		End If
+	Else
+		MsgBox("The library named """ + LibName + """ not found!" + Chr(13) + _
+		"Check the office's Libraries." + Chr(13) + _
+		"Some of the macros will not be available!", 48, "Oops!")
+		isLibraryLoaded = False
+	End If
+End Function
