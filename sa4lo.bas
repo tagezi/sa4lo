@@ -62,6 +62,7 @@ Function fRead(Optional sFileName As String)
     Close #iNumber
 End Function
 
+'пишем настройки в файл
 Function fSave(sAddress As String)
 	iNumber = Freefile
 	Open sFileName For Output As #iNumber
@@ -89,7 +90,6 @@ Sub StartAnalysisDialog(sAddress As String)
 		'начинаем расчеты
 			oDlg.setVisible(False)
 			StartAnalysis()
-			exit Do
 		elseif bStartFloodField Then
 		'открывает вспомогательное окно для адреса
 			oDlg.setVisible(False)
@@ -99,7 +99,6 @@ Sub StartAnalysisDialog(sAddress As String)
 		End If
 		wait (100)
 	Loop
-	Stop
 End Sub
 
 'облегчает управление диалоговым окнов для ввода адреса
@@ -128,28 +127,36 @@ Sub StartAddressDialog
 End Sub
 
 'сравнение массивов, если массивы не одинаковы, возвращаем Истину
+'какая-то фигня с алгоритмом
 Function ChangesCheck() As Boolean
 	Dim iNumField As Integer
-	Dim sChangesCheck As Boolean
 	iNumField = 1
-	sChangesCheck = False
 	If (oDlg.GetControl("CheckBox1").getState() <> aConfAddrParam(7)) Then
-		sChangesCheck = True
+		ChangesCheck = True
+		Exit Function
 	End If
-	While iNumField <> 7 or sChangesCheck <> True
-		On Error GoTo SkipStap
-		If (oDlg.GetControl("ComboBox" & iNumField).Text <> aConfNameParam(iNumField)) Then
-			sChangesCheck = True
-		End If
-		If (oDlg.GetControl("TextField" & iNumField).Text <> aConfAddrParam(iNumField)) Then
-			sChangesCheck = True
+	While iNumField <> 7
+		If (IsEmpty(aConfNameParam(iNumField))) Then
+			If (oDlg.GetControl("ComboBox" & iNumField).Text <> "Не использовать") Then
+				ChangesCheck = False
+				Exit Function
+			else
+				ChangesCheck = True
+				Exit Function
+			End If
+		else
+			If (oDlg.GetControl("ComboBox" & iNumField).Text <> aConfNameParam(iNumField)) Then
+				ChangesCheck = True
+				Exit Function
+			End If
+			If (oDlg.GetControl("TextField" & iNumField).Text <> aConfAddrParam(iNumField)) Then
+				ChangesCheck = True
+				Exit Function
+			End If
 		End If
 		iNumField = iNumField + 1
 	Wend
-	ChangesCheck = sChangesCheck
-	Exit Function
-	SkipStap:
-		ChangesCheck = True	
+	ChangesCheck = True
 End Function
 
 'Запуск основного блока
@@ -227,8 +234,8 @@ Sub StartAnalysis
 		SensitivityAnlysis(nCount, sStartCell)
 	else
 		MsgBox "Вы не указали ни одного поля."
-		Stop
 	End If
+	Stop
 	Exit Sub
 	ErrorAddress:
 		MsgBox err & " Адрес для факторов указан не верно!"
