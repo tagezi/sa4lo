@@ -13,7 +13,9 @@ Private bCloseFloodField, bStartAnalysis, bStartFloodField As Boolean
 Sub Main
 	Dim sUrl, sLine As String
 	'грузим библиотеки и общую информацию 
-	If not isLibraryLoaded() Then Exit Sub
+	'If not isLibraryLoaded() Then Exit Sub
+	oLib = GlobalScope.BasicLibraries
+	oLib.LoadLibrary("Tools")
 	oLib = DialogLibraries.GetByName("SensitivityAnalysis")
 	oDlg = CreateUnoDialog(oLib.GetByName("DialogSA"))
 	oDoc = ThisComponent.Sheets
@@ -529,32 +531,4 @@ Function getCountNonEmpt(oRange As Variant)
         oEnum.nextElement()
     Loop
     getCountNonEmpt = iCountCells
-End Function
-
-REM AM:Listing 5.78: Using the ApplicationScriptLibraryContainer.
-REM Modified: JohnSUN
-REM Check whether is loaded the macro-library with the specified name
-REM (by default "Tools"). If not already loaded, it tries to load.
-Function isLibraryLoaded(Optional LibName As String) As Boolean
-Dim oLibs As Object
-	If IsMissing(LibName) Then LibName="Tools"
-	oLibs = GlobalScope.BasicLibraries
-	If oLibs.HasByName (LibName) Then
-		If (Not oLibs.isLibraryLoaded(LibName)) Then
-		oLibs.LoadLibrary(LibName)
-		End If
-		If (Not oLibs.isLibraryLoaded(LibName)) Then
-			MsgBox("The library named """ + LibName + """ is not loaded!" + Chr(13) + _
-			"Be sure to install the office properly." + Chr(13) + _
-			"Some of the macros will not be available!", 48, "Attention!")
-			isLibraryLoaded = False
-		Else
-			isLibraryLoaded = True
-		End If
-	Else
-		MsgBox("The library named """ + LibName + """ not found!" + Chr(13) + _
-		"Check the office's Libraries." + Chr(13) + _
-		"Some of the macros will not be available!", 48, "Oops!")
-		isLibraryLoaded = False
-	End If
 End Function
