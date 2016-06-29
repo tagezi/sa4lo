@@ -1,22 +1,31 @@
 'Option Explicit	
-Private oDlg, oDlgSAD, oDoc, oLib As Object
-Private aAddress(1 to 5) As String
-Private aComBox(1 to 5) As String
-Private aConfNameParam(1 to 7) As String
-Private aConfAddrParam(1 to 7) As String
-Private aConfTitleParam(1 to 7) As String
-Private nCount As Integer
-Private sSheet , sStartCell, sFieldName, sFileName As String
-Private bCloseFloodField, bStartAnalysis, bStartFloodField As Boolean
+Private oDlg As Object						'основное диалоговое окно
+Private oDlgSAD As Object					'диалоговое окно адреса
+Private oDoc As Object						'документ
+Private oLib As Object						'библиотека
+Private aAddress(1 to 5) As String			'массив для адресов ячеек показателей и факторам
+Private aComBox(1 to 5) As String			'массив для ярлыков показателей
+Private aConfNameParam(1 to 7) As String	'массив для ярлыков показателей и факторов из файла настроек
+Private aConfAddrParam(1 to 7) As String	'массив для адресов ячеек показателей и факторам из файла настроек
+Private aConfTitleParam(1 to 7) As String	'массив для адресов названий показателей и факторам из файла настроек
+Private nCount As Integer					'для подстчета ячеек (можно избавиться)
+Private sSheet As String					'название листа
+Private sStartCell As String				'тепвая ячейка таблицы
+Private sFieldName As String				'имя поля параметра
+Private sFileName As String					'имя файла настроек
+Private bCloseFloodField As Boolean			'переменная для закрытия/открытия диалога для выбора адресов
+Private bStartAnalysis As Boolean			'переменная для начала анализа
+Private bStartFloodField As Boolean			'переменная для закрытия/открытия основного диалога
 
 'Начальный блок запускающий компоненты для решения комплекса задач
 Sub Main
-	Dim sUrl, sLine As String
+	Dim sUrl As String	'строка адреса файла
 	'грузим библиотеки и общую информацию 
 	'If not isLibraryLoaded() Then Exit Sub
 	oLib = GlobalScope.BasicLibraries
 	oLib.LoadLibrary("Tools")
 	oLib = DialogLibraries.GetByName("SensitivityAnalysis")
+	DialogLibraries.loadLibrary("SensitivityAnalysis")
 	oDlg = CreateUnoDialog(oLib.GetByName("DialogSA"))
 	oDoc = ThisComponent.Sheets
 	'получаем адрес файла
@@ -31,7 +40,7 @@ End Sub
 
 'читаем настройки из файла
 Function fRead(Optional sFileName As String)
-	Dim aTempConfParam(1 to 3) As String
+	Dim aTempConfParam(1 to 3) As String	'массив для временного хранения подстрок для заполнения формы
 	iNumField = 1
 	iNumber = Freefile
 	Open sFileName For Input As iNumber
@@ -83,7 +92,9 @@ End Function
 Sub StartAnalysisDialog(sAddress As String)
 	Dim oDlgModel As Object
 	oDlg.setVisible(True)
-	If (Not IsEmpty(sFieldName)) Then oDlg.getControl(sFieldName).setText(sAddress)
+	If (sFieldName <> "") Then
+		oDlg.getControl(sFieldName).setText(sAddress)
+	End If
 	bStartFloodField = False
 	bStartAnalysis = False
 	'ждём нажатия кнопки
@@ -92,6 +103,7 @@ Sub StartAnalysisDialog(sAddress As String)
 		'начинаем расчеты
 			oDlg.setVisible(False)
 			StartAnalysis()
+			Exit Do
 		elseif bStartFloodField Then
 		'открывает вспомогательное окно для адреса
 			oDlg.setVisible(False)
@@ -105,14 +117,14 @@ End Sub
 
 'облегчает управление диалоговым окнов для ввода адреса
 Sub StartAddressDialog
-	Dim Controls(), oDlgSADModel, Doc, TextFieldModel As Object
+	Dim Controls() As Object, oDlgSADModel As Object, Doc As Object, TextFieldModel As Object
 	oDlg.setVisible(False)
 	oLib = DialogLibraries.GetByName("SensitivityAnalysis")
 	oDlgSAD = CreateUnoDialog(oLib.GetByName("Address"))
 	oDlgSADModel = oDlgSAD.Model
 	Doc = ThisComponent
 	oDlgSAD.setVisible(True)
-	bCloseFloodField = false
+	bCloseFloodField = False
 	'ждём нажатия кнопки
 	Do
 		Controls() = oDlgSADModel.getControlModels
@@ -122,14 +134,14 @@ Sub StartAddressDialog
 		'пересылаем данные в основное окно
 			oDlgSAD.setVisible(False)
 			StartAnalysisDialog(TextFieldModel.Text)
-			exit Do
+			Exit Do
 		End If
 		wait (100)
 	Loop
 End Sub
 
 'сравнение массивов, если массивы не одинаковы, возвращаем Истину
-'какая-то фигня с алгоритмом
+'ОТТЕСТИРОВАТЬ, полностью, должно работать
 Function ChangesCheck() As Boolean
 	Dim iNumField As Integer
 	iNumField = 1
@@ -140,33 +152,46 @@ Function ChangesCheck() As Boolean
 	While iNumField <> 7
 		If (IsEmpty(aConfNameParam(iNumField))) Then
 			If (oDlg.GetControl("ComboBox" & iNumField).Text <> "Не использовать") Then
-				ChangesCheck = False
+				ChangesCheck = True
 				Exit Function
 			else
-				ChangesCheck = True
+				ChangesCheck = False
 				Exit Function
 			End If
 		else
 			If (oDlg.GetControl("ComboBox" & iNumField).Text <> aConfNameParam(iNumField)) Then
 				ChangesCheck = True
 				Exit Function
-			End If
-			If (oDlg.GetControl("TextField" & iNumField).Text <> aConfAddrParam(iNumField)) Then
+			elseif (oDlg.GetControl("TextField" & iNumField).Text <> aConfAddrParam(iNumField)) Then
 				ChangesCheck = True
 				Exit Function
+			End If
+			'если значение адреса заголовка в масиве не равно нулю, то	
+			If (aConfTitleParam(iNumField) <> "") Then
+				'если поле адреса заголовка и значение в масиве не равны
+				If (oDlg.GetControl("TextField" & (iNumField + 5)).Text <> aConfTitleParam(iNumField)) Then
+					ChangesCheck = True
+					Exit Function
+				End If
+			'если поле адреса не равно нулю
+			elseif (oDlg.GetControl("TextField" & (iNumField + 5)) <> "") Then
+				ChangesCheck = True
+				Exit Function
+			'во всех остальных случаях они равны
 			End If
 		End If
 		iNumField = iNumField + 1
 	Wend
-	ChangesCheck = True
+	ChangesCheck = False
 End Function
 
 'Запуск основного блока
 Sub StartAnalysis
-	Dim iNumField, iNumber, StartTable As Integer
+	Dim iNumField As Integer, iNumber As Integer, StartTable As Integer
 	Dim valCof As Double
-	Dim sAddress, sRang, sNameSheet As String
-	Dim oSheet, oWorkSheet, oCellRange, oColumns, oColumn, oController As Object
+	Dim sAddress As String, sRang As String, sNameSheet As String
+	Dim oSheet As Object, oWorkSheet As Object, oCellRange As Object
+	Dim oColumns As Object, oColumn As Object, oController As Object
 	Dim aTempAddres (0 to 4) As String
 	oDlg.setVisible(False)
 	'проверка полей
@@ -202,35 +227,35 @@ Sub StartAnalysis
 				iNumField = iNumField + 1
 				sNameSheet = aComBox(iNumField)
 			Wend
-		End If
-		'Получаем предварительные сведения для создания документов
-		oSheet = oDoc.GetByName(sSheet)
-	    oCellRange = oSheet.getCellRangeByName(sRang)
-	    nCount = getCountNonEmpt(oCellRange)
-	    oController = ThisComponent.getcurrentController
-	    oColumns = oSheet.getColumns()
-	    oColumn = oColumns.getByIndex(sRang)
-	    StartTable = 1
-	    iNumField = 1
-	    'создаём табличные и графические формы
-		If (oDlg.GetControl("CheckBox1").getState()) Then
-			oDoc.insertNewByName("Interim calculation", iNumField, nCount)
-			oWorkSheet = oDoc.GetByName("Interim calculation")
-			oController.setActiveSheet(oWorkSheet)
-			While aComBox(iNumField) <> ""
-				CreateTableForm(StartTable, iNumField)
-				StartTable = StartTable + nCount + 18
-				iNumField = iNumField + 1
-			Wend
-		else
-			While aComBox(iNumField) <> ""
-				oDoc.insertNewByName(aComBox(iNumField), iNumField)
-				oWorkSheet = oDoc.GetByName(aComBox(iNumField))
+			'Получаем предварительные сведения для создания документов
+			oSheet = oDoc.GetByName(sSheet)
+		    oCellRange = oSheet.getCellRangeByName(sRang)
+		    nCount = getCountNonEmpt(oCellRange)
+		    oController = ThisComponent.getcurrentController
+		    oColumns = oSheet.getColumns()
+		    oColumn = oColumns.getByIndex(sRang)
+		    StartTable = 1
+		    iNumField = 1
+		    'создаём табличные и графические формы
+			If (oDlg.GetControl("CheckBox1").getState()) Then
+				oDoc.insertNewByName("Interim calculation", iNumField, nCount)
+				oWorkSheet = oDoc.GetByName("Interim calculation")
 				oController.setActiveSheet(oWorkSheet)
-				CreateTableForm(StartTable, iNumField)
-				StartTable = 1
-				iNumField = iNumField + 1
-			Wend
+				While aComBox(iNumField) <> ""
+					CreateTableForm(StartTable, iNumField)
+					StartTable = StartTable + nCount + 18
+					iNumField = iNumField + 1
+				Wend
+			else
+				While aComBox(iNumField) <> ""
+					oDoc.insertNewByName(aComBox(iNumField), iNumField)
+					oWorkSheet = oDoc.GetByName(aComBox(iNumField))
+					oController.setActiveSheet(oWorkSheet)
+					CreateTableForm(StartTable, iNumField)
+					StartTable = 1
+					iNumField = iNumField + 1
+				Wend
+			End If
 		End If
 		'запускаем расчет анализа чувсвительности
 		SensitivityAnlysis(nCount, sStartCell)
@@ -340,8 +365,9 @@ End Function
 
 'блок создания табличных форм
 Function CreateTableForm (StartTable as Integer, iTitleTable As Integer )
-	Dim oDocement , dispatcher, oSheetSource, oSheet As object
-	Dim StartTableChart, numS, ind, nCfCellColumn, nCfCellRow, CountRow As Integer
+	Dim oDocement As object, dispatcher As object, oSheetSource As object, oSheet As object
+	Dim StartTableChart As Integer, numS As Integer, ind As Integer, _
+	 nCfCellColumn As Integer, nCfCellRow As Integer, CountRow As Integer
 	Dim sABC (1 to 11) As String
 	StartTableChart = StartTable
 	CreateChart(iTitleTable, StartTableChart) 'создание графических форм
@@ -430,31 +456,6 @@ Function CreateTableForm (StartTable as Integer, iTitleTable As Integer )
 	Wend
 end Function
 
-'событие, если пользователь выбрал из списка показатель
-Sub EnabledUp(NameCall)
-	Dim cName As String
-	cName = NameCall.Source.getModel().Name
-	EnableUpAvto(cName)
-End Sub
-
-'Активация списка и полей при изменении предыдущего
-Function EnableUpAvto(cName As String)
-	Dim iNumField, iNextNumField As Integer
-	iNumField = CDbl(right(cName, 1))
-	If (oDlg.GetControl("ComboBox" & iNumField).getModel().Text <> "Не использовать" ) Then
-		iNextNumField = iNumField + 1
-		oDlg.GetControl("ComboBox" & iNextNumField).getModel().Enabled = True
-		oDlg.GetControl("TextField" & iNextNumField).getModel().Enabled = True
-		oDlg.GetControl("CommandButton" & iNextNumField).getModel().Enabled = True
-		iNumField = CDbl(right(cName, 1))
-	End If
-	If (oDlg.GetControl("ComboBox" & iNumField).getModel().Text = "Собственный") Then
-		iNextNumField = iNumField + 5
-		oDlg.GetControl("TextField" & iNextNumField).getModel().Enabled = True
-		oDlg.GetControl("CommandButton" & iNextNumField).getModel().Enabled = True
-	End If
-End Function
-
 'Создание графических форм
 Sub CreateChart(iTitleTable As Integer, StartTableChart As Integer)
   Dim oSheet , oRect, oCharts, oChart, oChartDoc, oTitle, oDiagram  As Object
@@ -493,6 +494,47 @@ Sub CreateChart(iTitleTable As Integer, StartTableChart As Integer)
  	oDiagram.DataRowSource = Rows 
 End Sub
 
+'Подсчет ячеек
+Function getCountNonEmpt(oRange As Variant)
+	Dim oQry, oCells, oEnum, iCountCells As Variant
+    oQry = oRange.queryContentCells(com.sun.star.sheet.CellFlags.VALUE)
+    oEnum =  oQry.getCells().createEnumeration()
+    iCountCells = 0
+    Do while oEnum.hasMoreElements()
+        iCountCells = iCountCells + 1
+        oEnum.nextElement()
+    Loop
+    getCountNonEmpt = iCountCells
+End Function
+
+'событие, если пользователь выбрал из списка показатель
+Sub EnabledUp(NameCall)
+	Dim cName As String
+	cName = NameCall.Source.getModel().Name
+	EnableUpAvto(cName)
+End Sub
+
+'Активация списка и полей при изменении предыдущего
+Function EnableUpAvto(cName As String)
+	Dim iNumField, iNextNumField As Integer
+	iNumField = CDbl(right(cName, 1))
+	If (oDlg.GetControl("ComboBox" & iNumField).getModel().Text <> "Не использовать" ) Then
+		iNextNumField = iNumField + 1
+		oDlg.GetControl("ComboBox" & iNextNumField).getModel().Enabled = True
+		oDlg.GetControl("TextField" & iNextNumField).getModel().Enabled = True
+		oDlg.GetControl("CommandButton" & iNextNumField).getModel().Enabled = True
+		iNumField = CDbl(right(cName, 1))
+		iNextNumField = iNumField + 5
+		oDlg.GetControl("TextField" & iNextNumField).getModel().Enabled = True
+		oDlg.GetControl("CommandButton" & iNextNumField).getModel().Enabled = True
+	End If
+End Function
+
+'событие "нажата кнопка Ok" основного диалога
+Sub onBtnStartAnalysis(oEvent)
+	bStartAnalysis = True
+End Sub
+
 'событие "нажата кнопка Ok" вспомогательного диалога
 Sub onBtnOKPressed(oEvent)
 	bCloseFloodField = True
@@ -505,30 +547,12 @@ Sub onBtnStartFloodField(oEvent)
 	sFieldName = "TextField" & Right(sFieldName, Len(sFieldName) - 13)
 End Sub
 
-'событие "нажата кнопка Ok" основного диалога
-Sub onBtnStartAnalysis(oEvent)
-	bStartAnalysis = True
-End Sub
-
-'возвращает полное имя файла с путем до него в синтаксисе ОС
-function GetConfFileName(sUrl As String)
-	GetConfFileName = Left(sUrl, Len(sUrl) - 4) & ".conf"
-End Function
-
 'Закрытие без сохранения
 Sub CloseDialog
     Stop
 End Sub
 
-'Подсчет ячеек
-Function getCountNonEmpt(oRange As Variant)
-	Dim oQry, oCells, oEnum, iCountCells As Variant
-    oQry = oRange.queryContentCells(com.sun.star.sheet.CellFlags.VALUE)
-    oEnum =  oQry.getCells().createEnumeration()
-    iCountCells = 0
-    Do while oEnum.hasMoreElements()
-        iCountCells = iCountCells + 1
-        oEnum.nextElement()
-    Loop
-    getCountNonEmpt = iCountCells
+'возвращает полное имя файла с путем до него в синтаксисе ОС
+function GetConfFileName(sUrl As String)
+	GetConfFileName = Left(sUrl, Len(sUrl) - 4) & ".conf"
 End Function
