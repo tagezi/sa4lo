@@ -6,6 +6,7 @@ Private oDoc As Object						'документ
 Private oSheet As Object					'рабочий лист
 Private aAddress(1 to 5) As String			'массив для адресов ячеек показателей и факторам
 Private aComBox(1 to 5) As String			'массив для ярлыков показателей
+Private aAddrName (1 to 5) As String
 Private aConfNameParam(1 to 7) As String	'массив для ярлыков показателей и факторов из файла настроек
 Private aConfAddrParam(1 to 7) As String	'массив для адресов ячеек показателей и факторам из файла настроек
 Private aConfTitleParam(1 to 7) As String	'массив для адресов названий показателей и факторам из файла настроек
@@ -97,7 +98,9 @@ Function fSave(sAddress As String)
 		Print #iNumber, "CheckBox1" & ";" & oDlg.GetControl("CheckBox1").getState()
 			'в цикле пишем показатели
 			While aComBox(iNumField) <> ""
-				Print #iNumber, aComBox(iNumField) & ";" & Right(aAddress(iNumField), (Len(aAddress(iNumField)) - 1)) & ";"
+				Print #iNumber, aComBox(iNumField) & ";" & _
+				Right(aAddress(iNumField), (Len(aAddress(iNumField)) - 1)) & ";" & _
+				Right(aAddrName(iNumField), (Len(aAddrName(iNumField)) - 1)) & ";"
 				iNumField = iNumField + 1
 			Wend
 		'Fac - адрес диапазона факторов
@@ -366,30 +369,35 @@ End Function
 
 'Проверка полей
 Function FieldTest() As Integer
-	Dim aTempAddres (0 to 4) As String
-	Dim sComBox As String, sAddress As String
-	Dim iNumField As Integer, iArrayIndex As Integer
+	Dim aTempAddres(0 to 4) As String
+	Dim sComBox As String, sAddress As String, sAddrName As String
+	Dim iNumField As Integer
 	iNumField = 1
-	iArrayIndex = 0
 	While iNumField <> 5
 		sAddress = "=" & oDlg.GetControl("TextField" & iNumField).getModel().Text
+		sAddrName = "=" & oDlg.GetControl("TextField" & (iNumField + 5)).getModel().Text
 		sComBox = oDlg.GetControl("ComboBox" & iNumField).getModel().Text
 		If (sComBox <> "Не использовать") Then
 			If (sAddress <> "=") Then
 				aTempAddres = Split(sAddress, "$")
 				aTempAddres = Split(aTempAddres(1)&aTempAddres(2)&aTempAddres(3), "'")
 				aTempAddres = Split(aTempAddres(1)&aTempAddres(2), ".")
-				iArrayIndex = iArrayIndex + 1
-				aAddress(iArrayIndex) = sAddress
-				aComBox(iArrayIndex) = sComBox
+				aAddress(iNumField) = sAddress
+				If (sAddrName <> "=") Then
+					aTempAddres = Split(sAddrName, "$")
+					aTempAddres = Split(aTempAddres(1)&aTempAddres(2)&aTempAddres(3), "'")
+					aTempAddres = Split(aTempAddres(1)&aTempAddres(2), ".")
+					aAddrName(iNumField) = sAddrName
+				End If
 			else
-				MsgBox "Поле " & sComBox & " пусто!"
+				MsgBox "Поле адреса показателя " & sComBox & " пусто!"
 				Stop
 			End If
+			aComBox(iNumField) = sComBox
 		End If
 		iNumField = iNumField + 1
 	Wend
-	FieldTest = iArrayIndex
+	FieldTest = iNumField
 End Function
 
 'блок создания табличных форм
@@ -441,8 +449,9 @@ end Sub
 
 'Создание графических форм
 Sub CreateChart(iTitleTable As Integer, StartTableChart As Integer)
-  Dim oSheet , oRect, oCharts, oChart, oChartDoc, oTitle, oDiagram  As Object
+  Dim oSheet , oRect, oCharts, oChart, oChartDoc  As Object
   Dim sName, sDataRng As String
+  Dim aTempAddres(0 to 4) As String
   Dim RangeAddress(0) As New com.sun.star.table.CellRangeAddress
   oRect = createObject("com.sun.star.awt.Rectangle")
 	    oRect.X = 1000
@@ -468,13 +477,19 @@ Sub CreateChart(iTitleTable As Integer, StartTableChart As Integer)
  	oChart = oCharts.getByName(sName)
  	oChart.setRanges(RangeAddress())
  	oChartDoc = oChart.getEmbeddedObject()
- 	oDiagram = oChartDoc.createInstance("com.sun.star.chart.LineDiagram")
- 	oChartDoc.setDiagram(oDiagram)
- 	oChartDoc.HasLegend = True 
- 	oTitle = oChartDoc.getTitle()
- 	oTitle.String = aComBox(iTitleTable)
- 	oDiagram = oChartDoc.getDiagram()
- 	oDiagram.DataRowSource = Rows 
+ 	oChartDoc.setDiagram(oChartDoc.createInstance("com.sun.star.chart.LineDiagram"))
+ 	oChartDoc.HasLegend = True
+ 	If (oDlg.GetControl("TextField" & (iTitleTable + 5)).Text = "") Then 
+ 		oChartDoc.getTitle().String = aComBox(iTitleTable)
+ 	else
+ 		aTempAddres = Split(oDlg.GetControl("TextField" & (iTitleTable + 5)).Text, "$")
+		aTempAddres = Split(aTempAddres(1)&aTempAddres(2)&aTempAddres(3), "'")
+		aTempAddres = Split(aTempAddres(1)&aTempAddres(2), "."
+		oCellCopy = oDoc.getByName(aTempAddres(0)).getCellRangeByName(aTempAddres(1))
+		'oCellCopy = oDoc.getSheets().getCellRangesByName(oDlg.GetControl("TextField" & (iTitleTable + 5)))
+		oChartDoc.getTitle.String = oCellCopy.String
+ 	End If
+ 	oChartDoc.getDiagram().DataRowSource = Rows 
 End Sub
 
 'событие, если пользователь выбрал из списка показатель
