@@ -1,8 +1,9 @@
-'Option Explicit	
+'Option Explicit
+Private oLib As Object						'библиотека	
 Private oDlg As Object						'основное диалоговое окно
 Private oDlgSAD As Object					'диалоговое окно адреса
 Private oDoc As Object						'документ
-Private oLib As Object						'библиотека
+Private oSheet As Object					'рабочий лист
 Private aAddress(1 to 5) As String			'массив для адресов ячеек показателей и факторам
 Private aComBox(1 to 5) As String			'массив для ярлыков показателей
 Private aConfNameParam(1 to 7) As String	'массив для ярлыков показателей и факторов из файла настроек
@@ -21,12 +22,12 @@ Private bStartFloodField As Boolean			'переменная для закрыт�
 Sub Main
 	Dim sUrl As String	'строка адреса файла
 	'грузим библиотеки и общую информацию 
-	'If not isLibraryLoaded() Then Exit Sub
 	oLib = GlobalScope.BasicLibraries
 	oLib.LoadLibrary("Tools")
 	oLib = DialogLibraries.GetByName("SensitivityAnalysis")
 	DialogLibraries.loadLibrary("SensitivityAnalysis")
 	oDlg = CreateUnoDialog(oLib.GetByName("DialogSA"))
+	'получаем информациюо документе
 	oDoc = ThisComponent.Sheets
 	'получаем адрес файла
 	sUrl = ThisComponent.getURL()
@@ -38,36 +39,48 @@ Sub Main
 	StartAnalysisDialog("") 'запускаем основной диалог
 End Sub
 
-'читаем настройки из файла
+'читаем настройки из файла, заполняем форму и массив для дальнейшего
+'определения изменений в форме
 Function fRead(Optional sFileName As String)
 	Dim aTempConfParam(1 to 3) As String	'массив для временного хранения подстрок для заполнения формы
 	iNumField = 1
 	iNumber = Freefile
-	Open sFileName For Input As iNumber
+	Open sFileName For Input As iNumber		'открываем файл на чтение
 	While Not eof(iNumber)
 		Line Input #iNumber, sLine
 		If sLine <> sFileName and sLine <> "" Then
+			'0 элемент массива всегда хранит метку поля;
+			'1 элемент адрес ячейки показателя/фактора или значение флажка;
+			'2 элемент хранит адрес названия
 			aTempConfParam = split(sLine, ";")
-			aConfAddrParam(7) = 1
-			If (aTempConfParam(1) <> "1" and aTempConfParam(0) = "CheckBox1") Then
-				oDlg.getControl("CheckBox1").State = False
+			'проверяем флажок, по умолчанию в форме он установлен в 1
+			If (aTempConfParam(0) = "CheckBox1") Then
 				aConfNameParam(7) = "CheckBox1"
-				aConfAddrParam(7) = 0
-			elseIf (aTempConfParam(0) <> "CheckBox1" and aTempConfParam(0) <> "Fac") Then
-				oDlg.getControl("ComboBox" & iNumField).setText(aTempConfParam(0))
-				aConfNameParam(iNumField) = aTempConfParam(0)
-				EnableUpAvto("ComboBox" & iNumField)
-				oDlg.getControl("TextField" & iNumField).setText(aTempConfParam(1))
-				aConfAddrParam(iNumField) = aTempConfParam(1)
-				If (aTempConfParam(1) = "Собственный") Then
-					oDlg.getControl("TextField" & (iNumField + 5 )).setText(aTempConfParam(2))
-					aConfTitleParam(iNumField) = aTempConfParam(2)
-				end If
-				iNumField = iNumField + 1
-			else
+				If (aTempConfParam(1) <> "1") Then
+					oDlg.getControl("CheckBox1").State = False
+					aConfAddrParam(7) = 0
+				else
+					aConfAddrParam(7) = 1
+				End If
+			'Fac - метка где хранится адрес диапазона факторов
+			elseIF (aTempConfParam(0) = "Fac") Then
 				oDlg.getControl("TextField11").setText(aTempConfParam(1))
 				aConfAddrParam(iNumField) = aTempConfParam(1)
-            end if
+			else
+			'иначе остались только поля показателей
+				'значение выподающего списка с показателями
+				oDlg.getControl("ComboBox" & iNumField).setText(aTempConfParam(0))
+				aConfNameParam(iNumField) = aTempConfParam(0)
+				'делаем нижние поля доступными
+				EnableUpAvto("ComboBox" & iNumField)		
+				'адрес ячейки с расчитаным показателем
+				oDlg.getControl("TextField" & iNumField).setText(aTempConfParam(1))
+				aConfAddrParam(iNumField) = aTempConfParam(1)
+				'адрес названия
+				oDlg.getControl("TextField" & (iNumField + 5 )).setText(aTempConfParam(2))
+				aConfTitleParam(iNumField) = aTempConfParam(2)
+				iNumField = iNumField + 1
+			End If
         End If
    	Wend
     Close #iNumber
@@ -78,12 +91,16 @@ Function fSave(sAddress As String)
 	iNumber = Freefile
 	Open sFileName For Output As #iNumber
 		iNumField = 1
+		'первая строка полный путь до файла с именем
 		Print #iNumber, sFileName
+		'вторая строка значение флажка
 		Print #iNumber, "CheckBox1" & ";" & oDlg.GetControl("CheckBox1").getState()
+			'в цикле пишем показатели
 			While aComBox(iNumField) <> ""
 				Print #iNumber, aComBox(iNumField) & ";" & Right(aAddress(iNumField), (Len(aAddress(iNumField)) - 1)) & ";"
 				iNumField = iNumField + 1
 			Wend
+		'Fac - адрес диапазона факторов
 		Print #iNumber, "Fac" & ";" & Right(sAddress, (Len(sAddress) - 1))
 		Close #iNumber
 End Function
@@ -119,7 +136,7 @@ End Sub
 Sub StartAddressDialog
 	Dim Controls() As Object, oDlgSADModel As Object, Doc As Object, TextFieldModel As Object
 	oDlg.setVisible(False)
-	oLib = DialogLibraries.GetByName("SensitivityAnalysis")
+'	oLib = DialogLibraries.GetByName("SensitivityAnalysis")
 	oDlgSAD = CreateUnoDialog(oLib.GetByName("Address"))
 	oDlgSADModel = oDlgSAD.Model
 	Doc = ThisComponent
@@ -140,22 +157,21 @@ Sub StartAddressDialog
 	Loop
 End Sub
 
-'сравнение массивов, если массивы не одинаковы, возвращаем Истину
-'ОТТЕСТИРОВАТЬ, полностью, должно работать
+'сравнение массава данных из файла настроек и значений полей
+'если они не совпадают, нужно переделывать листы
+'НЕРАБОТАЕТ, пересоздание листов идёт в любом случае
 Function ChangesCheck() As Boolean
 	Dim iNumField As Integer
 	iNumField = 1
-	If (oDlg.GetControl("CheckBox1").getState() <> aConfAddrParam(7)) Then
+	'если значение флажка изменено, значит нужно делать формы по новой
+	If (oDlg.GetControl("CheckBox1").State() <> aConfAddrParam(7)) Then
 		ChangesCheck = True
 		Exit Function
 	End If
-	While iNumField <> 7
-		If (IsEmpty(aConfNameParam(iNumField))) Then
+	Do
+		If (aConfNameParam(iNumField) = "") Then
 			If (oDlg.GetControl("ComboBox" & iNumField).Text <> "Не использовать") Then
 				ChangesCheck = True
-				Exit Function
-			else
-				ChangesCheck = False
 				Exit Function
 			End If
 		else
@@ -163,6 +179,7 @@ Function ChangesCheck() As Boolean
 				ChangesCheck = True
 				Exit Function
 			elseif (oDlg.GetControl("TextField" & iNumField).Text <> aConfAddrParam(iNumField)) Then
+				str1 = oDlg.GetControl("TextField" & iNumField).Text
 				ChangesCheck = True
 				Exit Function
 			End If
@@ -174,24 +191,72 @@ Function ChangesCheck() As Boolean
 					Exit Function
 				End If
 			'если поле адреса не равно нулю
-			elseif (oDlg.GetControl("TextField" & (iNumField + 5)) <> "") Then
+			elseif (oDlg.GetControl("TextField" & (iNumField + 5)).Text <> "") Then
 				ChangesCheck = True
 				Exit Function
 			'во всех остальных случаях они равны
 			End If
 		End If
 		iNumField = iNumField + 1
-	Wend
+	Loop Until iNumField = 6
 	ChangesCheck = False
 End Function
+
+'Удаление листов
+Sub RemoveSheets
+	Dim iNumField As Integer
+	Dim sNameSheet As String
+	iNumField = 1
+	If (oDoc.hasByName("Interim calculation")) Then
+		oDoc.removeByName("Interim calculation")
+	End If
+	sNameSheet = aConfNameParam(iNumField)				
+	Do
+		If (oDoc.hasByName(sNameSheet)) Then
+			oDoc.removeByName(sNameSheet)
+		End If
+		iNumField = iNumField + 1
+		sNameSheet = aConfNameParam(iNumField)
+	Loop Until sNameSheet = ""
+End Sub
+
+'Создание листов
+Sub CreateSheets
+	Dim iNumField As Integer, StartTable As Integer
+	Dim oController As Object
+	iNumField = 1
+	iStartTable = 0
+	oController = ThisComponent.getCurrentController
+	'создаём табличные и графические формы
+	If (oDlg.GetControl("CheckBox1").getState()) Then
+		If (Not oDoc.hasByName("Interim calculation")) Then
+			oDoc.insertNewByName("Interim calculation", iNumField, nCount)
+			oController.setActiveSheet(oDoc.GetByName("Interim calculation"))
+			Do
+				CreateTableForm(iStartTable, iNumField)
+				iStartTable = iStartTable + nCount + 25
+				iNumField = iNumField + 1
+			Loop Until aComBox(iNumField) = ""
+		End If
+	else
+		Do 
+			If (Not oDoc.hasByName(aComBox(iNumField))) Then
+				oDoc.insertNewByName(aComBox(iNumField), iNumField)
+				oController.setActiveSheet(oDoc.GetByName(aComBox(iNumField)))
+				CreateTableForm(iStartTable, iNumField)
+			End If
+			iStartTable = 0
+			iNumField = iNumField + 1
+		Loop Until aComBox(iNumField) = ""
+	End If
+End Sub
 
 'Запуск основного блока
 Sub StartAnalysis
 	Dim iNumField As Integer, iNumber As Integer, StartTable As Integer
 	Dim valCof As Double
 	Dim sAddress As String, sRang As String, sNameSheet As String
-	Dim oSheet As Object, oWorkSheet As Object, oCellRange As Object
-	Dim oColumns As Object, oColumn As Object, oController As Object
+	Dim oColumn As Object, oCellRange As Object
 	Dim aTempAddres (0 to 4) As String
 	oDlg.setVisible(False)
 	'проверка полей
@@ -210,53 +275,17 @@ Sub StartAnalysis
 			MsgBox "Поле Диапазон факторов пусто!"
 			Stop
 		End If
-		'проверяем бфли ли изменены данные в диалоге
+		'проверяем были ли изменены данные в диалоге		
 		If (ChangesCheck()) Then
-			'если да, записываем новые данные в файл
-			fSave(sAddress)
-			iNumField = 1
-			'удаляем лишние листы
-			If (oDoc.hasByName("Interim calculation")) Then
-				oDoc.removeByName("Interim calculation")
-			End If
-			sNameSheet = aComBox(iNumField)				
-			While iNumField <> 5
-				If (oDoc.hasByName(sNameSheet)) Then
-					oDoc.removeByName(sNameSheet)
-				End If
-				iNumField = iNumField + 1
-				sNameSheet = aComBox(iNumField)
-			Wend
-			'Получаем предварительные сведения для создания документов
-			oSheet = oDoc.GetByName(sSheet)
-		    oCellRange = oSheet.getCellRangeByName(sRang)
-		    nCount = getCountNonEmpt(oCellRange)
-		    oController = ThisComponent.getcurrentController
-		    oColumns = oSheet.getColumns()
-		    oColumn = oColumns.getByIndex(sRang)
-		    StartTable = 1
-		    iNumField = 1
-		    'создаём табличные и графические формы
-			If (oDlg.GetControl("CheckBox1").getState()) Then
-				oDoc.insertNewByName("Interim calculation", iNumField, nCount)
-				oWorkSheet = oDoc.GetByName("Interim calculation")
-				oController.setActiveSheet(oWorkSheet)
-				While aComBox(iNumField) <> ""
-					CreateTableForm(StartTable, iNumField)
-					StartTable = StartTable + nCount + 18
-					iNumField = iNumField + 1
-				Wend
-			else
-				While aComBox(iNumField) <> ""
-					oDoc.insertNewByName(aComBox(iNumField), iNumField)
-					oWorkSheet = oDoc.GetByName(aComBox(iNumField))
-					oController.setActiveSheet(oWorkSheet)
-					CreateTableForm(StartTable, iNumField)
-					StartTable = 1
-					iNumField = iNumField + 1
-				Wend
-			End If
+			RemoveSheets()		'удаляем старые листы
+			fSave(sAddress)		'записываем новые данные в файл
 		End If
+		'Получаем предварительные сведения для создания новых листов
+		oSheet = oDoc.GetByName(sSheet)
+		nCount = oSheet.getCellRangeByName(sRang).getRows().getCount()
+		oColumn = oSheet.getColumns().getByIndex(sRang)
+		'проверяем наличие и создаём табличные и графические формы
+		CreateSheets()
 		'запускаем расчет анализа чувсвительности
 		SensitivityAnlysis(nCount, sStartCell)
 	else
@@ -285,7 +314,7 @@ Function SensitivityAnlysis(nCount As Integer, sStartCell As String)
 	While CellRowStart <> (nCount + 2)
 		CellRow = CellRowStart
 		If (oDlg.GetControl("CheckBox1").getState()) Then
-		'сичитаем, если документ один (тестоые расчеты)
+		'считаем, если документ один (тестовые расчеты)
 			oSheet = oDoc.getByName("Interim calculation")
 			While CellColumn <> 0
 				oSheetSource.getCellByPosition(nCfCellColumn, nCfCellRow).Value = nCfVol
@@ -319,7 +348,7 @@ Function SensitivityAnlysis(nCount As Integer, sStartCell As String)
             		iNumField = iNumField + 1
             	Wend
             	CellColumn = CellColumn - 1
-            	if (CellColumn = 6) Then
+            	If (CellColumn = 6) Then
             		CellColumn = CellColumn - 1
             		nCfVol = nCfVol - 0.1
             	end if
@@ -338,8 +367,8 @@ End Function
 'Проверка полей
 Function FieldTest() As Integer
 	Dim aTempAddres (0 to 4) As String
-	Dim sComBox, sAddress As String
-	Dim iNumField, iArrayIndex As Integer
+	Dim sComBox As String, sAddress As String
+	Dim iNumField As Integer, iArrayIndex As Integer
 	iNumField = 1
 	iArrayIndex = 0
 	While iNumField <> 5
@@ -364,97 +393,51 @@ Function FieldTest() As Integer
 End Function
 
 'блок создания табличных форм
-Function CreateTableForm (StartTable as Integer, iTitleTable As Integer )
-	Dim oDocement As object, dispatcher As object, oSheetSource As object, oSheet As object
-	Dim StartTableChart As Integer, numS As Integer, ind As Integer, _
+Sub CreateTableForm (StartTable as Integer, iTitleTable As Integer )
+	Dim oSheetSource As Object, oRangCells As Object
+	Dim numS As Integer, ind As Integer, _
 	 nCfCellColumn As Integer, nCfCellRow As Integer, CountRow As Integer
-	Dim sABC (1 to 11) As String
-	StartTableChart = StartTable
-	CreateChart(iTitleTable, StartTableChart) 'создание графических форм
-	oDocement = ThisComponent.CurrentController.Frame
-	dispatcher = createUnoService("com.sun.star.frame.DispatchHelper")
+	CreateChart(iTitleTable, StartTable) 'создание графических форм
 	'делаем заголовок таблиной формы
-	Dim args(0) as new com.sun.star.beans.PropertyValue
-	args(0).Name = "ToPoint"
-	args(0).Value = "$A$" & StartTable & ":$L$" & StartTable
-	dispatcher.executeDispatch(oDocement, ".uno:GoToCell", "", 0, args())
-	dispatcher.executeDispatch(oDocement, ".uno:MergeCells", "", 0, Array())
-	args(0).Name = "HorizontalAlignment"
-	args(0).Value = com.sun.star.table.CellHoriJustify.CENTER
-	dispatcher.executeDispatch(oDocement, ".uno:HorizontalAlignment", "", 0, args())
-	args(0).Name = "Bold"
-	args(0).Value = true
-	dispatcher.executeDispatch(oDocement, ".uno:Bold", "", 0, args())
-	args(0).Name = "BackgroundColor"
-	args(0).Value = 14540253
-	dispatcher.executeDispatch(oDocement, ".uno:BackgroundColor", "", 0, args())
-	args(0).Name = "StringName"
-	args(0).Value = aComBox(iTitleTable)
-	dispatcher.executeDispatch(oDocement, ".uno:EnterString", "", 0, args())
-	dispatcher.executeDispatch(oDocement, ".uno:JumpToNextCell", "", 0, Array())
-	sABC(1) = "B"
-	sABC(2) = "C"
-	sABC(3) = "D"
-	sABC(4) = "E"
-	sABC(5) = "F"
-	sABC(6) = "G"
-	sABC(7) = "H"
-	sABC(8) = "I"
-	sABC(9) = "J"
-	sABC(10) = "K"
-	sABC(11) = "L"
-	numS = -50
-	ind = 1
-	StartTable = StartTable + 1
-	'делаем подзаголовок табличной формы
-	While ind < 12
-		args(0).Name = "ToPoint"
-		args(0).Value =  "$" & sABC(ind) & "$" & StartTable
-		dispatcher.executeDispatch(oDocement, ".uno:GoToCell", "", 0, args())
-		args(0).Name = "StringName"
-		args(0).Value = numS & "%"
-		dispatcher.executeDispatch(oDocement, ".uno:EnterString", "", 0, args())
-		numS = numS + 10
-		ind = ind + 1
-	Wend
-	args(0).Name = "ToPoint"
-	args(0).Value = "$B$" & StartTable & ":$L$" & StartTable
-	dispatcher.executeDispatch(oDocement, ".uno:GoToCell", "", 0, args())
-	args(0).Name = "BackgroundColor"
-	args(0).Value = 15658734
-	dispatcher.executeDispatch(oDocement, ".uno:BackgroundColor", "", 0, args())
-	args(0).Name = "NumberFormatValue"
-	args(0).Value = 10
-	dispatcher.executeDispatch(oDocement, ".uno:NumberFormatValue", "", 0, args())
-	args(0).Name = "HorizontalAlignment"
-	args(0).Value = com.sun.star.table.CellHoriJustify.CENTER
-	dispatcher.executeDispatch(oDocement, ".uno:HorizontalAlignment", "", 0, args())
-	StartTable = StartTable + 1
-	CountRow = nCount + ind
-	'копируем ссылки в центральный столбец
 	oSheetSource = oDoc.getByName(sSheet)
 	If (oDlg.GetControl("CheckBox1").getState()) Then
 		oSheet = oDoc.getByName("Interim calculation")
 	else
 		oSheet = oDoc.getByName(aComBox(iTitleTable))
 	End If
+	oRangCells = oSheet.getCellRangeByPosition(0, StartTable, 11, StartTable)
+	oRangCells.Merge(True)							'объединяем ячейки
+	oRangCells.CharWeight = 150						'шрифт жирный
+	oRangCells.HoriJustify = 2						'по центру
+	oRangCells.CellBackColor = RGB(151, 151, 151)	'цвет фона
+	oSheet.getCellByPosition(0,StartTable).String = aComBox(iTitleTable)	
+	numS = -50
+	ind = 1
+	StartTable = StartTable + 1
+	'делаем подзаголовок табличной формы
+	While ind < 12
+		oSheet.getCellByPosition(ind, StartTable).String = numS & "%"
+		numS = numS + 10
+		ind = ind + 1
+	Wend
+	oRangCells = oSheet.getCellRangeByPosition(0,StartTable, 11, StartTable)
+	oRangCells.HoriJustify = 2						'по центру
+	oRangCells.CellBackColor = RGB(188, 188, 188)	'цвет фона
+	StartTable = StartTable + 1
+	CountRow = nCount + ind
+	'копируем ссылки в центральный столбец
 	nCfCellColumn = oSheetSource.getCellRangeByName(sStartCell).getCellAddress.Column
 	nCfCellRow = oSheetSource.getCellRangeByName(sStartCell).getCellAddress.Row
 	While ind < CountRow
 		oCellCopy = oSheetSource.getCellByPosition((nCfCellColumn - 1), nCfCellRow)
-		oCellPast = oSheet.getCellByPosition(0, (StartTable - 1))
+		oCellPast = oSheet.getCellByPosition(0, StartTable)
 		oCellPast.DataArray = oCellCopy.DataArray
-		args(0).Name = "ToPoint"
-		args(0).Value =  "$G" & "$" & StartTable
-		dispatcher.executeDispatch(oDocement, ".uno:GoToCell", "", 0, args())
-		args(0).Name = "StringName"
-		args(0).Value = aAddress(iTitleTable)
-		dispatcher.executeDispatch(oDocement, ".uno:EnterString", "", 0, args())
+		oSheet.getCellByPosition(6, StartTable).Formula = aAddress(iTitleTable)
 		nCfCellRow = nCfCellRow + 1
 		StartTable = StartTable + 1
 		ind = ind + 1
 	Wend
-end Function
+end Sub
 
 'Создание графических форм
 Sub CreateChart(iTitleTable As Integer, StartTableChart As Integer)
@@ -477,9 +460,9 @@ Sub CreateChart(iTitleTable As Integer, StartTableChart As Integer)
     sName = "Chart" & iTitleTable
   	RangeAddress(0).Sheet = oSheet.getRangeAddress().Sheet
 	RangeAddress(0).StartColumn = 0 
-	RangeAddress(0).StartRow = (StartTableChart)
+	RangeAddress(0).StartRow = (StartTableChart + 1)
 	RangeAddress(0).EndColumn = 11
-	RangeAddress(0).EndRow = (StartTableChart + nCount)
+	RangeAddress(0).EndRow = (StartTableChart + nCount + 1)
 	oCharts = oSheet.getCharts()
  	oCharts.addNewByName(sName, oRect, RangeAddress(), True, True)
  	oChart = oCharts.getByName(sName)
@@ -493,19 +476,6 @@ Sub CreateChart(iTitleTable As Integer, StartTableChart As Integer)
  	oDiagram = oChartDoc.getDiagram()
  	oDiagram.DataRowSource = Rows 
 End Sub
-
-'Подсчет ячеек
-Function getCountNonEmpt(oRange As Variant)
-	Dim oQry, oCells, oEnum, iCountCells As Variant
-    oQry = oRange.queryContentCells(com.sun.star.sheet.CellFlags.VALUE)
-    oEnum =  oQry.getCells().createEnumeration()
-    iCountCells = 0
-    Do while oEnum.hasMoreElements()
-        iCountCells = iCountCells + 1
-        oEnum.nextElement()
-    Loop
-    getCountNonEmpt = iCountCells
-End Function
 
 'событие, если пользователь выбрал из списка показатель
 Sub EnabledUp(NameCall)
